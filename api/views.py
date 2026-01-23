@@ -21,7 +21,9 @@ class MyTokenObtainPairView(TokenObtainPairView):
 class CreateUserView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
+    # FIX: Allow anyone to register and IGNORE JWT tokens for this specific request
     permission_classes = [permissions.AllowAny]
+    authentication_classes = [] 
 
 # 2. LIBRARY MANAGEMENT
 class BookListCreate(generics.ListCreateAPIView):
@@ -50,7 +52,7 @@ class BookDetail(generics.RetrieveDestroyAPIView):
     def get_queryset(self):
         return Book.objects.filter(user=self.request.user)
 
-# 3. IT BOOKSTORE SEARCH VIEW (Optimized with Google Embedded Reader)
+# 3. IT BOOKSTORE SEARCH VIEW
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def search_books(request):
@@ -65,7 +67,7 @@ def search_books(request):
         response = requests.get(url)
         data = response.json()
     except Exception:
-        return Response({"error": "IT Bookstore API service unreachable"}, status=400)
+        return Response({"error": "IT Bookstore API service unreachable"}, status=status.HTTP_400_BAD_REQUEST)
     
     formatted_results = []
     for item in data.get('books', []):
@@ -81,11 +83,7 @@ def search_books(request):
             "category": "Technology",
             "is_ebook": True,
             "is_readable": True,
-            
-            # THE FIX: Use Google Books Viewer to ensure a readable preview exists for your iframe
-            # This uses the ISBN to find the book in Google's database and displays the embeddable viewer
             "web_reader_link": f"https://books.google.com/books?vid=ISBN{isbn13}&printsec=frontcover&output=embed",
-            
             "is_search_result": True
         })
         
@@ -96,16 +94,25 @@ class ProfileUpdateView(generics.UpdateAPIView):
     serializer_class = ProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = (MultiPartParser, FormParser)
+    
     def get_object(self):
-        return self.request.user.profile
+        # FIX: Ensure a profile exists for the user before trying to update it
+        profile, created = Profile.objects.get_or_create(user=self.request.user)
+        return profile
 
 class ReadingProgressUpdate(generics.UpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
+    
     def patch(self, request, *args, **kwargs):
         book_id = request.data.get("google_book_id")
         page = request.data.get("current_page")
+        
+        if not book_id:
+            return Response({"error": "Book ID required"}, status=status.HTTP_400_BAD_REQUEST)
+            
         progress, created = ReadingProgress.objects.update_or_create(
-            user=request.user, google_book_id=book_id,
+            user=request.user, 
+            google_book_id=book_id,
             defaults={'current_page': page}
         )
         return Response({"status": "progress updated"})
